@@ -4,17 +4,13 @@ from firebase_admin import credentials, db
 import random
 import ssl
 
-# ==========================================
-# 1. FIREBASE CONFIGURATION
-# ==========================================
+
 cred = credentials.Certificate("serviceAccountKey.json")
 firebase_admin.initialize_app(cred, {
     'databaseURL': 'https://aegisreal-8b7a3-default-rtdb.firebaseio.com'
 })
 
-# ==========================================
-# 2. MQTT CONFIGURATION (SECURE)
-# ==========================================
+
 MQTT_BROKER = "broker.hivemq.com"
 MQTT_PORT = 8883
 MQTT_TOPIC_TELE = "crabs/telematics/live"
@@ -23,7 +19,7 @@ MQTT_TOPIC_RATE = "crabs/commands/rate"
 MQTT_TOPIC_GEO = "crabs/commands/geofence"
 MQTT_TOPIC_ALERT = "crabs/alerts/geofence"
 
-# --- FIREBASE LISTENERS ---
+
 def immo_stream_handler(event):
     if event.data is not None:
         print(f"\n🔔 IMMO COMMAND FROM CLOUD: {event.data}")
@@ -38,7 +34,7 @@ def rate_stream_handler(event):
         client.publish(MQTT_TOPIC_RATE, str(event.data))
 
 def geo_stream_handler(event):
-    # Detect if dashboard cleared the geofence
+    
     if event.data is None or str(event.data).strip() == "":
         print("\n🛡️ EDGE COMMAND: Clearing Geofence & Disarming Alarm")
         client.publish(MQTT_TOPIC_GEO, "POLY:CLEAR", retain=True)
@@ -47,9 +43,7 @@ def geo_stream_handler(event):
         print(f"\n🗺️ EDGE COMMAND: Pushing New Geofence -> {poly_string}")
         client.publish(MQTT_TOPIC_GEO, poly_string, retain=True)
 
-# ==========================================
-# 3. SECURE MQTT CALLBACKS
-# ==========================================
+
 def on_connect(client, userdata, flags, reason_code, properties):
     if reason_code == 0:
         print("✅ SUCCESS: Bridge Connected to Secure MQTTS Cloud")
@@ -59,14 +53,14 @@ def on_connect(client, userdata, flags, reason_code, properties):
         print(f"❌ MQTT Connection Failed: {reason_code}")
 
 def on_message(client, userdata, msg):
-    # --- HARDWARE ALERT SYNC ---
+    
     if msg.topic == MQTT_TOPIC_ALERT:
         if msg.payload.decode('utf-8') == "BREACH":
             print("\n🚨 HARDWARE OVERRIDE: Geofence Breached! Syncing Dashboard Switch...")
             db.reference('CRABS_vehicle_live/vehicle_commands').update({'immo_active': True})
         return
 
-    # --- STANDARD TELEMETRY PARSING ---
+    
     payload = msg.payload.decode('utf-8')
     try:
         parts = payload.split(',')
@@ -89,9 +83,7 @@ def on_message(client, userdata, msg):
     except Exception as e:
         pass
 
-# ==========================================
-# 4. EXECUTION
-# ==========================================
+
 print("Initializing CRABS Secure Bi-Directional Backend...")
 client_id = f"CRABS-Bridge-{random.randint(1000, 9999)}"
 client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=client_id)
@@ -108,4 +100,5 @@ db.reference('CRABS_vehicle_live/vehicle_commands/geofence_polygon').listen(geo_
 try:
     client.loop_forever()
 except KeyboardInterrupt:
+
     print("\nBridge Offline.")
