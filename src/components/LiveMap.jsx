@@ -14,6 +14,20 @@ const distMetres = (lat1, lng1, lat2, lng2) => {
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 };
 
+const calcPredictedLocation = (lat, lng, speed, heading, seconds) => {
+    if (!lat || !lng || !speed) return [lat, lng];
+    const R = 6371000;
+    const d = (speed * 1000 / 3600) * seconds; // Distance in meters
+    const brng = heading * Math.PI / 180;
+    const lat1 = lat * Math.PI / 180;
+    const lng1 = lng * Math.PI / 180;
+
+    const lat2 = Math.asin(Math.sin(lat1) * Math.cos(d / R) + Math.cos(lat1) * Math.sin(d / R) * Math.cos(brng));
+    const lng2 = lng1 + Math.atan2(Math.sin(brng) * Math.sin(d / R) * Math.cos(lat1), Math.cos(d / R) - Math.sin(lat1) * Math.sin(lat2));
+
+    return [lat2 * 180 / Math.PI, lng2 * 180 / Math.PI];
+};
+
 const vehicleIcon = (L, color) => L.divIcon({
     html: `<div style="width:16px;height:16px;background:${color};border:3px solid #fff;border-radius:50%;box-shadow:0 0 10px ${color}aa;"></div>`,
     iconSize: [16, 16],
@@ -21,11 +35,12 @@ const vehicleIcon = (L, color) => L.divIcon({
     className: '',
 });
 
-const LiveMap = ({ currentLat, currentLng, isImmobilized, onGeofenceBreach }) => {
+const LiveMap = ({ currentLat, currentLng, speed = 0, heading = 0, isImmobilized, onGeofenceBreach, onPredictiveBreach }) => {
     const mapContainerRef = useRef(null);
     const mapInstance = useRef(null);
     const markerRef = useRef(null);
     const circleRef = useRef(null);
+    const predictionLineRef = useRef(null);
     const [mapError, setMapError] = useState(false);
 
     useEffect(() => {
@@ -87,17 +102,59 @@ const LiveMap = ({ currentLat, currentLng, isImmobilized, onGeofenceBreach }) =>
         const dist = distMetres(GEOFENCE_CENTER[0], GEOFENCE_CENTER[1], currentLat, currentLng);
         const breached = dist > GEOFENCE_RADIUS_M;
 
+        let markerColor = '#C66E43'; // Default Amber
+        if (breached) markerColor = '#BD4C45'; // Red
+
         const fenceColor = breached ? '#BD4C45' : '#50805F';
         circleRef.current.setStyle({ color: fenceColor, fillColor: fenceColor });
-        markerRef.current.setIcon(vehicleIcon(L, breached ? '#BD4C45' : '#C66E43'));
+        markerRef.current.setIcon(vehicleIcon(L, markerColor));
 
         if (breached && !isImmobilized) onGeofenceBreach(true);
-    }, [currentLat, currentLng, isImmobilized]);
+
+        // Predictive line drawing
+        if (predictionLineRef.current) {
+            mapInstance.current.removeLayer(predictionLineRef.current);
+        }
+        if (speed > 5) {
+            const [predLat, predLng] = calcPredictedLocation(currentLat, currentLng, speed, heading, 30);
+            predictionLineRef.current = L.polyline([
+                [currentLat, currentLng],
+                [predLat, predLng]
+            ], {
+                color: '#D98845',
+                weight: 2,
+                dashArray: '4 4'
+            }).addTo(mapInstance.current);
+        }
+
+    }, [currentLat, currentLng, speed, heading, isImmobilized]);
 
     const dist = (currentLat && currentLng)
         ? distMetres(GEOFENCE_CENTER[0], GEOFENCE_CENTER[1], currentLat, currentLng)
         : 0;
     const isBreached = dist > GEOFENCE_RADIUS_M;
+
+    const [predLat, predLng] = calcPredictedLocation(currentLat, currentLng, speed, heading, 30);
+    const predDist = (predLat && predLng)
+        ? distMetres(GEOFENCE_CENTER[0], GEOFENCE_CENTER[1], predLat, predLng)
+        : 0;
+    const isPredictiveBreach = !isBreached && (predDist > GEOFENCE_RADIUS_M) && speed > 5;
+
+    useEffect(() => {
+        if (onPredictiveBreach) {
+            onPredictiveBreach(isPredictiveBreach);
+        }
+    }, [isPredictiveBreach, onPredictiveBreach]);
+
+    let statusText = '✅ SECURE — INSIDE ZONE';
+    let statusColor = 'var(--status-ok)';
+    if (isBreached) {
+        statusText = '⚠️ BREACHED — VEHICLE IMMOBILIZED';
+        statusColor = 'var(--status-danger)';
+    } else if (isPredictiveBreach) {
+        statusText = '⚠️ WARNING: APPROACHING BOUNDARY (30s PREDICTION)';
+        statusColor = '#D98845'; // Amber
+    }
 
     return (
         <div className="card" style={{ gridColumn: '1 / -1' }}>
@@ -107,8 +164,8 @@ const LiveMap = ({ currentLat, currentLng, isImmobilized, onGeofenceBreach }) =>
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
-                <span style={{ fontWeight: 700, fontSize: '0.9rem', color: isBreached ? 'var(--status-danger)' : 'var(--status-ok)' }}>
-                    {isBreached ? '⚠️ BREACHED — VEHICLE IMMOBILIZED' : '✅ SECURE — INSIDE ZONE'}
+                <span style={{ fontWeight: 700, fontSize: '0.9rem', color: statusColor, textShadow: isPredictiveBreach ? '0px 0px 8px rgba(217, 136, 69, 0.4)' : 'none' }}>
+                    {statusText}
                 </span>
                 <span className="data-label" style={{ fontSize: '0.8rem' }}>
                     {dist.toFixed(0)} m from centre · Fence: {GEOFENCE_RADIUS_M} m

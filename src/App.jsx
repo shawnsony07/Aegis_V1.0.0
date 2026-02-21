@@ -6,17 +6,23 @@ import ControlCard from './components/ControlCard';
 import GeofenceMap from './components/GeofenceMap';
 import LiveMap from './components/LiveMap';
 import { useFirebaseTelemetry, setImmobilizerState } from './services/firebaseService';
+import { initializeNotifications, sendBreachNotification, sendApproachNotification } from './services/notificationService';
 
 function App() {
     const [telemetry, setTelemetry] = useState(null);
     const [connected, setConnected] = useState(false);
     const [immobilizerActive, setImmobilizerActive] = useState(false);
+    const [hasNotifiedApproach, setHasNotifiedApproach] = useState(false);
     const [darkMode, setDarkMode] = useState(false);
 
     // Apply / remove dark theme on the root element
     useEffect(() => {
         document.documentElement.setAttribute('data-theme', darkMode ? 'dark' : 'light');
     }, [darkMode]);
+
+    useEffect(() => {
+        initializeNotifications();
+    }, []);
 
     // Initialize Firebase connection
     useEffect(() => {
@@ -104,10 +110,22 @@ function App() {
                 <LiveMap
                     currentLat={telemetry.lat}
                     currentLng={telemetry.lng}
+                    speed={telemetry.speed}
+                    heading={telemetry.heading}
                     isImmobilized={immobilizerActive}
-                    onGeofenceBreach={(shouldImmobilize) => {
+                    onGeofenceBreach={async (shouldImmobilize) => {
                         if (shouldImmobilize && !immobilizerActive) {
                             handleImmobilizerToggle(true);
+                            await sendBreachNotification();
+                            setHasNotifiedApproach(false);
+                        }
+                    }}
+                    onPredictiveBreach={async (isPredicting) => {
+                        if (isPredicting && !hasNotifiedApproach) {
+                            setHasNotifiedApproach(true);
+                            await sendApproachNotification();
+                        } else if (!isPredicting && hasNotifiedApproach) {
+                            setHasNotifiedApproach(false);
                         }
                     }}
                 />

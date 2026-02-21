@@ -1,6 +1,7 @@
 import React from 'react';
 import { MapPin, Signal, Database } from 'lucide-react';
 import Speedometer from './Speedometer';
+import SpeedGraph from './SpeedGraph';
 import SignalBars from './SignalBars';
 
 const LocationCard = ({ data }) => {
@@ -13,6 +14,9 @@ const LocationCard = ({ data }) => {
 
       {/* Speedometer */}
       <Speedometer speed={data.speed || 0} maxSpeed={200} />
+
+      {/* Speed History Graph */}
+      <SpeedGraph speed={data.speed || 0} />
 
       {/* Coordinates row */}
       <div className="data-row" style={{ marginTop: '1rem' }}>
