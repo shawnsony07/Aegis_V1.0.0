@@ -1,6 +1,6 @@
-#include "driver/rtc_io.h" // NEW: Required to hold pins during sleep
+#include "driver/rtc_io.h"
 
-// --- Pin Definitions (XIAO ESP32-S3 Sense) ---
+
 const int IGNITION_PIN = D3; 
 const int POT_PIN = A0;
 const int JOY_X_PIN = A1;   
@@ -8,7 +8,6 @@ const int JOY_Y_PIN = A2;
 const int LED_ON_PIN = D4;
 const int LED_OFF_PIN = D5;
 
-// --- PHASE 5: RTC (Real-Time Clock) MEMORY ---
 RTC_DATA_ATTR int ignitionState = 0;      
 RTC_DATA_ATTR bool isImmobilized = false;
 RTC_DATA_ATTR int sleepIntervalSec = 60; 
@@ -17,7 +16,7 @@ int lastIgnitionButtonState = 1;
 int lastSpeed = -99, lastSteering = -99, lastIgnition = -99;
 float lastBatteryVolt = -99.0;
 
-// --- ANTI-FLOOD RATE LIMITING ---
+
 unsigned long lastSendTime = 0;
 unsigned long lastChangeTime = 0;
 int updateRateMs = 1000; 
@@ -30,7 +29,7 @@ void setup() {
   pinMode(LED_OFF_PIN, OUTPUT);
   delay(1000); 
 
-  // --- PHASE 5: WAKEUP REASON CHECK ---
+  
   esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
   if (wakeup_reason == ESP_SLEEP_WAKEUP_EXT0) {
     ignitionState = 1; 
@@ -44,7 +43,7 @@ void setup() {
 }
 
 void loop() {
-  // 1. LISTEN FOR REMOTE COMMANDS
+  
   if (Serial1.available() > 0) {
     String cmd = Serial1.readStringUntil('\n');
     cmd.trim();
@@ -62,7 +61,7 @@ void loop() {
     }
   }
 
-  // 2. READ SENSORS
+  
   float currentBatteryVolt = 10.0 + (analogRead(POT_PIN) / 4095.0) * 5.0;
   int currentIgnitionReading = digitalRead(IGNITION_PIN);
   
@@ -90,7 +89,7 @@ void loop() {
     digitalWrite(LED_OFF_PIN, ignitionState ? LOW : HIGH);
   }
 
-  // 4. TRANSMIT DATA 
+
   bool stateChanged = (abs(currentSpeed - lastSpeed) > 5 || abs(currentSteering - lastSteering) > 5 || 
       abs(currentBatteryVolt - lastBatteryVolt) > 0.3 || ignitionState != lastIgnition);
 
@@ -106,7 +105,7 @@ void loop() {
     lastSendTime = millis();
   }
 
-  // --- PHASE 5: THE DEEP SLEEP TRIGGER ---
+  
   if (ignitionState == 0) {
     Serial.println("⏳ Waiting 1 second for incoming cloud commands...");
     
@@ -121,7 +120,7 @@ void loop() {
       }
     }
 
-    // NEW: Wait for the user to physically let go of the button before sleeping!
+    
     if (digitalRead(IGNITION_PIN) == LOW) {
       Serial.println("✋ Please release the Ignition Button...");
       while (digitalRead(IGNITION_PIN) == LOW) { delay(10); }
@@ -130,7 +129,7 @@ void loop() {
 
     Serial.println("💤 Entering Deep Sleep for " + String(sleepIntervalSec) + " seconds...");
     
-    // NEW: Force the internal pull-up resistor to stay ON during sleep
+
     rtc_gpio_pullup_en((gpio_num_t)IGNITION_PIN);
     rtc_gpio_pulldown_dis((gpio_num_t)IGNITION_PIN);
     
